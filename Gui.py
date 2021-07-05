@@ -2,18 +2,20 @@ from tkinter import *
 from tkinter import filedialog
 import numpy as np
 import cv2
-import pytesseract
 from PIL import Image, ImageTk
+import pytesseract
 from tkPDFViewer import tkPDFViewer as pdf
 import pdfplumber
 import re
 from tkinter import messagebox
+from tkinter.simpledialog import askinteger
 
 pytesseract.pytesseract.tesseract_cmd = r"E:\\SOFTWARE\\Tesseract-OCR\\tesseract.exe"
 
 path = ""
 lg = "vie"
 arrPDF = []
+urlPDF = ""
 
 root = Tk()  # create root windows
 
@@ -55,7 +57,8 @@ def selectPDF():
     v2 = pdf.ShowPdf().pdf_view(panelPDF, pdf_location=f'{url}', width=80)
     v2.pack()
 
-    global arrPDF
+    global arrPDF,urlPDF
+    urlPDF = url
     if arrPDF:
         arrPDF.clear()
 
@@ -113,13 +116,16 @@ def soKhop(StringPDF, string):
     if string in StringPDF:
         return True
     else:
+        string = checkChatacter(string)
+        if string in StringPDF:
+            return True
         if re.findall(special_characters, string[-2:].strip()):
-            string = re.sub(special_characters, "", string.strip(), 1)
+            string = string[0:-2]
             if string in StringPDF:
                 return True
 
+    print(string)
     return False
-
 
 def checkChatacter(i):
     while (True):
@@ -139,21 +145,33 @@ def scanImg():
     a = adjust_gamma(img)
     config = r'--psm 3'
     boxes = pytesseract.image_to_data(a, config=config, lang=lg)
-    potision = -1
+    potision = 0
     count = 0
+    checkRow = 0
+    lenRow = 0
     check = True
     for x, b in enumerate(boxes.splitlines()):
         if x != 0:
             b = b.split()
             if len(b) == 12:
                 if int(b[5]) == 1:
-                    potision = potision + 1
-                checkC = soKhop(arrPDF[potision], checkChatacter(b[11]).strip())
+                    print(checkRow, lenRow, potision)
+                    if lenRow/2 <= checkRow:
+                        potision = potision
+                    else:
+                        potision = potision + 1
+                    checkRow,lenRow = 0,0
+
+                checkC = soKhop(arrPDF[potision], b[11].strip())
+
                 if checkC == False:
                     check = False
                     x, y, w, h = int(b[6]), int(b[7]), int(b[8]), int(b[9])
                     cv2.rectangle(img, (x, y), (x + w, y + h), (50, 50, 255), 1)
                     count = count +1
+                    checkRow = checkRow + 1
+
+                lenRow = lenRow + 1
 
     img = cv2.resize(img, (int((center.winfo_width() + 10) / 2), height), fx=2, fy=2)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -164,14 +182,31 @@ def scanImg():
     if check is True:
         Message("Thông Báo", "Trùng Khớp")
     else:
-        Message("Thông Báo","Không Trung Khớp \n Số ký tự không trùng khớp: {}".format(count))
-    # lblText.configure(text=row)
+        if count > 50:
+            Message("Thông Báo","Không Trung Khớp \n Số ký tự không trùng khớp: {}".format(count))
+        else:
+            Message("Thông Báo", "Không Trung Khớp")
 
+
+def selectPage():
+    arrPDF.clear()
+    number = askinteger("Input", "Page Number",minvalue=1)
+    with pdfplumber.open(urlPDF) as pdfs:
+        first_page = pdfs.pages[number-1]
+        arr = first_page.extract_text().split("\n")
+        for i in arr:
+            if len(i) > 1:
+                if "[•]" in i:
+                    i = i.replace("•", "")
+                arrPDF.append(i.strip())
+
+    print(arrPDF)
 
 menubar = Menu(root)
 filemenu = Menu(menubar, tearoff=0)
 filemenu.add_command(label="Select File PDF", command=selectPDF)
 filemenu.add_command(label="Select IMG", command=selectIMG)
+filemenu.add_command(label="Select Page PDF", command=selectPage)
 filemenu.add_command(label="Scan IMG", command=scanImg)
 filemenu.add_separator()
 filemenu.add_command(label="Exit", command=root.quit)
